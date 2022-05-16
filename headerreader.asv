@@ -1,4 +1,5 @@
 clear;
+<<<<<<< HEAD
 maxMVC = zeros(5,1); %preallocation for more efficiency
 
 %global variables (for ui)
@@ -8,8 +9,10 @@ desiredoutlineval = 2; %decideds the Standard diviation used in outline removal/
     %filenamematrix = ["S1_MVC_delt_links.txt"; "S1_MVC_delt_rechts.txt";"S1_MVC_ECR_rechts.txt";"S1_MVC_trapezius_rechts.txt";"S1_MVC_trapezius_links.txt"];
 
 %% MVC inladen en maximum bepalen
+% bv delt links is is te zien op kanaal 3 (kolom 3) delt rechts op kanaal 4
 filenamematrix = ["S1_MVC_delt_links.txt"; "S1_MVC_delt_rechts.txt";"S1_MVC_ECR_rechts.txt";"S1_MVC_trapezius_rechts.txt";"S1_MVC_trapezius_links.txt"];
 kanaal = [3 4 5 2 1]; % op welk kanaal worden deze spieren ingelezen (kolom)
+
 
 for c = 1:5
     filename = filenamematrix(c,:);
@@ -92,6 +95,7 @@ for channel = 1:5
     Fv = linspace(0, 1, fix(L/2)+1)*Fn;                 % Frequency Vector
     Iv = 1:numel(Fv);  
     title(['channel: ' num2str(channel)]) %doesn't work for some reason
+  %  plot(Fv, abs(FTs(Iv))*2) %gebruiken om zonder bandpass te showen
 
     %% bandpass filter (heeft soms iets decent gedaan, kan close zijn)
     order = 2;  %AANPASSEN VIA UI
@@ -99,42 +103,56 @@ for channel = 1:5
     upperbandpass = 150;    %AANPASSEN VIA UI
     FTs = abs(FTs);
     [b,a] = butter(order,[lowerbandpass,upperbandpass]/Fn,'bandpass'); % fs/2 --> nyquist freq (samplerate/2)
+    %[b,a] = cheby1(order,1,[0.4 0.7]); %potentieel andere filter optie?
+
     filtsig=filter(b,a,FTs);
 
-    figure()
+    %figure()
     plot(Fv, abs(filtsig(Iv))*2, Fv, abs(FTs(Iv))*2)
     legend('Filterd','non-filtered')
     xlim([0 350])
 end
 
-%% parametrized band-pass filter
-order = 2;  %AANPASSEN VIA UI
-lowerbandpass = 50;     %AANPASSEN VIA UI
-upperbandpass = 150;    %AANPASSEN VIA UI
-FTs = abs(FTs);
-[b,a] = butter(order,[lowerbandpass,upperbandpass]/Fn,'bandpass'); % fs/2 --> nyquist freq (samplerate/2)
-filtsig=filter(b,a,FTs);
-
-figure()
-plot(Fv, abs(filtsig(Iv))*2, Fv, abs(FTs(Iv))*2)
-legend('Filterd','non-filtered')
-xlim([0 350])
-
-%% parametrized band-pass filter
-%FTs = bandpass(FTs, [lowerbandpass,upperbandpass], Fs, 'ImpulseResponse','iir','Steepness',.45);
-%in geval van bandpass, eer
-order = 2;
-lowerbandpass = 20;
+lowerbandpass = 30;
 upperbandpass = 50;
-FTs = abs(FTs);
-%[b,a] = cheby1(order,1,[0.4 0.7]); %potentieel andere filter optie?
-%[b,a] = butter(order,[lowerbandpass,upperbandpass]/Fn,'bandpass'); % fs/2 --> nyquist freq (samplerate/2)
-filtsig=filter(b,a,FTs);
+filename = 'file1.txt';
+matrix = readmatrix(filename);
+matrix(:,1:2) = [];
+linesOfFile = readlines(filename);
+headerline = linesOfFile(2); % header is on the second line
+headerline = convertStringsToChars(headerline); % needed for further use
+headerline(1:24) = []; %remove chars to be able to read in as jsonobject
+headerline = headerline(1:end-1); %remove chars to be able to read in as jsonobject
+headerobject = jsondecode(headerline);
+date = headerobject.date;
+time = headerobject.time;
+Fs = headerobject.samplingRate;   %sampfreq
+resolution = headerobject.resolution;
 
-%% presenting the data
+%% Removing outline
+matrix = rmoutliers(matrix,'mean','ThresholdFactor',2); %Change 2 to x for desired outliner removal
+
+%% Function 
+n = resolution(1); % not always 16 for each channel. improved version that checks channel per column necessairy?
+VCC = 3;
+gemg = Fs;
+emg = (((matrix/2^n) - (1/2)) * VCC) / gemg; %in V
+emg= emg*1000; %to mV
+
+%%fast fourier transform first column 
+%%fastfourrier
+%TODO other lines
+Fn = Fs/2;                                          % Nyquist Frequency
+L = numel(emg(:,1));                                % Signal Length
+FTs = fft(emg(:,1))/L;                              % Fourier Transform first column
+Fv = linspace(0, 1, fix(L/2)+1)*Fn;                 % Frequency Vector
+
+%% parametrized band-pass filter
+FTs = bandpass(FTs, [lowerbandpass,upperbandpass], Fs);
+%% 
 Iv = 1:numel(Fv);                                   % Index Vector
 figure
-plot(Fv, abs(filtsig(Iv))*2)
+plot(Fv, abs(FTs(Iv))*2)
 grid
 xlabel('Frequency')
 ylabel('Amplitude')
