@@ -9,7 +9,7 @@ desiredoutlineval = 2; %decideds the Standard diviation used in outline removal/
 
 %% MVC inladen en maximum bepalen
 % bv delt links is is te zien op kanaal 3 (kolom 3) delt rechts op kanaal 4
-filenamematrix = ["S1_MVC_delt_links.txt"; "S1_MVC_delt_rechts.txt";"S1_MVC_ECR_rechts.txt";"S1_MVC_trapezius_rechts.txt";"S1_MVC_trapezius_links.txt"];
+filenamematrix = ["S1_MVC_delt_links.txt"; "S1_MVC_delt_rechts.txt";"S1_MVC_ECR_rechts.txt";"S1_MVC_trapezius_rechts.txt";"S1_MVC_trapezius_links.txt"]; 
 kanaal = [3 4 5 2 1]; % op welk kanaal worden deze spieren ingelezen (kolom)
 
 
@@ -18,11 +18,23 @@ for c = 1:5
     matrix = readmatrix(filename);
     matrix(:,1:2) = [];
     kanaalnummer = kanaal(c);
+    %inlezen parameters
+    linesOfFile = readlines(filename);
+    headerline = linesOfFile(2); % header is on the second line
+    headerline = convertStringsToChars(headerline); % needed for further use
+    headerline(1:24) = []; %remove chars to be able to read in as jsonobject
+    headerline = headerline(1:end-1); %remove chars to be able to read in as jsonobject
+    headerobject = jsondecode(headerline);
+    datemvc = headerobject.date;
+    timemvc = headerobject.time;
+    Fsmvc = headerobject.samplingRate;   %sampfreq
+    resolutionmvc = headerobject.resolution;
 
 % verwijderen van outlines: verwijderen en vervangen door gemiddelde
 % waarden onder en boven.
-matrix = filloutliers(matrix,'center','mean','ThresholdFactor', desiredoutlineval); 
-
+matrixzonderoutliers = filloutliers(matrix,'center','mean','ThresholdFactor', desiredoutlineval); 
+%matrix omzetten naar mv
+matrix = toMV(matrix,resolutionmvc,Fsmvc);
 % Maximum bepalen
 maximumValue = max(matrix,[],1); %selects max value of all columns, used for later selection
 maxMVC(kanaalnummer,1) = maximumValue(kanaalnummer); %matrix which stores max values of each column in correct 
@@ -41,9 +53,7 @@ for c = 1:2
     filenamefs = filenamematrixfs(c,:);
     matrixfs = readmatrix(filenamefs);
     matrixfs(:,1:2) = [];
-    %question to ask, filter outliners?
-    matrixfs = filloutliers(matrixfs,'center','mean','ThresholdFactor', 3); 
-    
+  
     linesOfFile = readlines(filenamefs);
     headerline = linesOfFile(2); % header is on the second line
     headerline = convertStringsToChars(headerline); % needed for further use
@@ -55,11 +65,18 @@ for c = 1:2
     Fs = headerobject.samplingRate;   %sampfreq
     resolution = headerobject.resolution;
     
+    %question to ask, filter outliners?
+    matrixfswithoutoutliers = filloutliers(matrixfs,'center','mean','ThresholdFactor', 3);
+
     if c == 1
+        matrixfastmv = toMV(matrixfs,resolution,Fs);
         normscorefast = zeros(numel(matrixfs)/5,5);    %preallocation for more efficiency    
     else
+        matrixslow = toMV(matrixfs,resolution,Fs);
         normscoreslow = zeros(numel(matrixfs)/5,5);    %preallocation for more efficiency
     end
+
+     matrixfs = toMV(matrixfs,resolution,Fs); %change matrixfs to withoutliers if selected
     
     % Normalisatie data
     for x = 1:5
@@ -87,7 +104,7 @@ end
 tiledlayout(5,2)
 for channel = 1:5
     nexttile
-    emg = toMV(matrixfs,resolution,Fs);  %matrixfs hardcoded because of uncertainty need for both fast/slow
+    emg = matrixfastmv;  %matrixfs hardcoded because of uncertainty need for both fast/slow
     Fn = Fs/2;                                          % Nyquist Frequency
     L = numel(emg(:,channel));                                % Signal Length
     FTs = fft(emg(:,channel))/L;                              % Fourier Transform first column
@@ -95,6 +112,7 @@ for channel = 1:5
     Iv = 1:numel(Fv);  
     title(['channel: ' num2str(channel)]) %doesn't work for some reason
   %  plot(Fv, abs(FTs(Iv))*2) %gebruiken om zonder bandpass te showen
+     FTsvector(:,channel) = FTs; %holds all fourrier values
 
     %% bandpass filter (heeft soms iets decent gedaan, kan close zijn)
     order = 2;  %AANPASSEN VIA UI
@@ -105,7 +123,7 @@ for channel = 1:5
     %[b,a] = cheby1(order,1,[0.4 0.7]); %potentieel andere filter optie?
 
     filtsig=filter(b,a,FTs);
-
+    bandpassfilter(:,channel) = filtsig; %holds all bandpass filtered data
     %figure()
     plot(Fv, abs(filtsig(Iv))*2, Fv, abs(FTs(Iv))*2)
     legend('Filterd','non-filtered')
